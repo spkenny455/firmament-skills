@@ -64,7 +64,7 @@ This is your retrospective, not an independent measurement of your memory. An om
 
 ## Then: fill the fixed report template
 
-Read `references/report-data.md`. Write `report-data.json` with the short headline, one-sentence description, evidence-backed findings, and at most two featured examples. The report is addressed to the owner in plain, roughly third-grade English. Preserve the distinctions between observed benefit, a plausible missed opportunity, and knowledge learned for the next task. No positive conclusion is required.
+Read `references/report-data.md`. Write version 3 `report-data.json` with a short headline, one-sentence description, a concrete event list for the lead number, evidence-backed findings grouped into at most three plain topics, and two short takeaways. Choose the observed event type that best explains the main finding; do not invent a dramatic number. The report is addressed to the owner in plain, roughly third-grade English. Preserve the distinctions between observed benefit, a plausible missed opportunity, and knowledge learned for the next task. No positive conclusion is required.
 
 **Use the bundled renderer. Do not design the report yourself.** Do not write replacement HTML/CSS/SVG, choose new charts, change labels or colors, or edit the renderer during an audit. Do not reuse an older report from this conversation as a layout reference. The renderer owns the structure, text sizes, spacing, charts, colors and empty states. You supply only the content fields in the versioned schema.
 
@@ -74,7 +74,7 @@ Resolve the script path relative to this installed skill directory and run:
 python3 scripts/render_report.py /path/to/report-data.json --out /path/to/new/report-directory
 ```
 
-It produces the same branded A4 layout every time: headline and description, three computed knowledge counts with a fixed bar chart, and two fixed “What happened → Next time” slots. The slots remain in place when evidence is missing. Counts come from directly supported findings, not editable metrics. No dates, banners, footnotes, long quotes or custom panels appear on the poster. Full evidence stays in the retrospective.
+It produces the same branded A4 card layout every time: headline and description; a large event count; the supported lesson count with topic bars; an observed-event trail; and two takeaway cards. A fixed link lets readers run their own audit. The slots remain in place when evidence is missing. Counts come from directly supported findings, not editable metrics. No dates, banners, footnotes, long quotes or custom panels appear on the poster. Full evidence stays in the retrospective.
 
 If the renderer rejects text, shorten the JSON copy while preserving the claim; do not shrink the fonts or change the template. The script enforces slot limits and a total of 120 visible words. If Python or file execution is unavailable, return the completed JSON and retrospective with that limitation; do not generate a different visual design.
 
