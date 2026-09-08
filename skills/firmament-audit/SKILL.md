@@ -16,7 +16,7 @@ Do not ask the user which conversation, what Firmament is, what to analyze, whic
 
 You are the agent that worked in this conversation. Give an honest, specific account of what you learned here and what the next agent should be able to benefit from. Then use that material to create a useful visual report.
 
-This is an experiment to discover the right report format. Use your judgment about what matters and how to present it. The report's structure should follow what you actually find. Complete the retrospective and the report; a plan or a blank template is not the deliverable.
+Use the same report template on every run. Use your judgment to select truthful findings and concise copy. The bundled template controls their presentation. Complete the retrospective and the report; a plan or a blank template is not the deliverable.
 
 ## What Firmament does and why we are asking
 
@@ -62,41 +62,31 @@ State which conversation and context you inspected, whether original messages an
 
 This is your retrospective, not an independent measurement of your memory. An omitted summary entry, a missing mention, or a finding recovered from a transcript does not by itself prove forgetting. Avoid invented savings, percentages and claims of inevitable future loss.
 
-## Then: make a simple visual report
+## Then: fill the fixed report template
 
-Create `report.html`: a self-contained, one-page A4 portrait poster addressed to the agent's owner. It should answer at a glance: would having the right knowledge sooner have helped, what specifically could change, and what is worth keeping? If prior knowledge already helped, show that actual benefit. If no useful gap is supported, make that the conclusion. Complete the files with the tools available; if rendering or file tools are absent, return the concrete content and state what could not be produced.
+Read `references/report-data.md`. Write `report-data.json` with the short headline, one-sentence description, evidence-backed findings, and at most two featured examples. The report is addressed to the owner in plain, roughly third-grade English. Preserve the distinctions between observed benefit, a plausible missed opportunity, and knowledge learned for the next task. No positive conclusion is required.
 
-### Copy limits
+**Use the bundled renderer. Do not design the report yourself.** Do not write replacement HTML/CSS/SVG, choose new charts, change labels or colors, or edit the renderer during an audit. Do not reuse an older report from this conversation as a layout reference. The renderer owns the structure, text sizes, spacing, charts, colors and empty states. You supply only the content fields in the versioned schema.
 
-Use no more than **120 visible words in the entire poster**, including chart labels and the agent's assessment, excluding only brand and agent names. Count the words before delivery. This is a ceiling, not a target.
+Resolve the script path relative to this installed skill directory and run:
 
-- One headline of at most **9 words**, written to the owner in roughly third-grade English. State the supported conclusion, not the topic of the report. For example, when justified: “Your agent could have skipped these steps.” If no useful gap is found: “Your agent had what it needed.” If evidence is limited: “We can't tell what would have helped.” Choose your own wording from the findings; do not copy a positive claim by default.
-- At most one short sentence beneath it, at most **18 words**, naming the concrete reason. No introductory paragraph.
-- Metric labels use **2–4 plain words**. Short sentences elsewhere; one thought each. Replace abstract terms with familiar actions and things.
-- Remove the date range, conversation count, project subtitle, “learning audit” eyebrow, “counterfactual” banner, source IDs, section-number labels, quote blocks, footnotes and methodology footer. Keep those details in `retrospective.md`. Keep uncertainty that changes the claim in the claim itself: “could help,” “helped,” and “not enough evidence” mean different things.
-- Your answer about needing Firmament can appear as one short attributed sentence only if it adds something the headline and visual do not already say. No mandatory testimonial panel.
+```sh
+python3 scripts/render_report.py /path/to/report-data.json --out /path/to/new/report-directory
+```
 
-### Let the visuals explain
+It produces the same branded A4 layout every time: headline and description, three computed knowledge counts with a fixed bar chart, and two fixed “What happened → Next time” slots. The slots remain in place when evidence is missing. Counts come from directly supported findings, not editable metrics. No dates, banners, footnotes, long quotes or custom panels appear on the poster. Full evidence stays in the retrospective.
 
-Give most of the content area to visual explanation and clear data. Use one or two substantial visuals, with up to three supported numbers integrated into them. Large numerals alone do not replace a visual explanation.
+If the renderer rejects text, shorten the JSON copy while preserving the claim; do not shrink the fonts or change the template. The script enforces slot limits and a total of 120 visible words. If Python or file execution is unavailable, return the completed JSON and retrospective with that limitation; do not generate a different visual design.
 
-Choose visuals that show the useful difference: a short path of what happened and the specific step knowledge could change; an observed comparison between attempts; or a simple map of knowledge already used, missing when needed, and learned here. These are options, not required categories. Use concrete details from the task with short labels, not generic decorative icons. Where a better path is hypothetical, label it “Could help next time” rather than depicting it as an observed result. Make actual prior-memory use visible when it materially explains the outcome.
+Open and inspect the generated report. When host tools permit, export that exact SVG/HTML to PNG and one-page PDF and check it at phone width. The HTML also offers Download PNG and Print / Save PDF. Describe only exports actually produced. If local font substitution causes overflow, shorten the input copy and rerun. The installed template is not to be changed as part of auditing a conversation.
 
-Show at most two specific examples as part of the visuals, with a brief statement of what the next agent should know or do. Keep full submissions, logs, supporting quotes and extra lessons in the retrospective. Derive numbers from identified records; keep their definitions there. Do not invent scores, savings, missing knowledge or a negative finding to get a more dramatic poster. If no improvement is supported, show the relevant observed steps or knowledge used; do not manufacture a before/after chart. With too little evidence for a meaningful chart, a simple honest visual conclusion is enough.
-
-Use Firmament's actual mark (`assets/firmament.png`) and name. The agent's real logo or short name is the only other header identity. Brand colors: paper `#F0EDE6`, ink `#0C1D26`, vermilion `#C03714`. Use Hoefler Text or a serif fallback for the headline and clear sans-serif for labels. Bundled agent logos are `assets/agents/codex.svg` and `assets/agents/claude.svg`. Embed assets, escape source text, and avoid remote scripts/fonts. Give elements space; remove content rather than shrinking type. No additional brand slogans or explanatory subheaders.
-
-For this experiment, design the report yourself. The bundled `scripts/render_report.py` and `references/report-data.md` are the older fixed-format prototype and do not implement this brief. Leave them unchanged; do not use their schema or layout as requirements. We will improve the renderer after seeing real output.
-
-When supported, export a PNG for sharing and a one-page PDF, then inspect them. Verify the word limit and check the card at phone width: the conclusion, key numbers and visual should be readable without zooming. If they are not, simplify. Clearly distinguish files produced and checked from export options merely offered by the HTML.
-
-## Tell us what the format should become
+## Keep brief format notes
 
 Write a short `format-notes.md` grounded in your own completed output:
 
 - Which findings deserve the most space, and why? What useful material did the one-page format leave out?
 - Which numbers or visuals were meaningful? State their exact derivation and supporting IDs. Which tempting claims could you not support?
-- Propose the smallest input object a reusable rendering script would need. Include one populated example taken from your findings, distinguishing source facts, agent-written summaries and computed values. Keep optional fields optional; do not design for hypothetical datasets.
+- Note any useful content the fixed schema could not express. Suggest changes separately; do not implement them in this audit or replace the schema.
 - What questions or missing evidence would materially improve this audit? What should we change in the skill after this run?
 
 Return the retrospective, report and notes with a brief explanation of the strongest finding and the coverage limits. Keep the files local; generating a shareable artifact does not publish it. Do not invent a hosted report URL. The human will use this output to decide what to standardize.

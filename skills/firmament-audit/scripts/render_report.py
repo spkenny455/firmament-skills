@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render findings into an offline A4 SVG/HTML card. No third-party packages."""
+"""Fill the fixed Firmament A4 card from report-data.json. Python standard library only."""
 import argparse
 import base64
 from collections import Counter
@@ -8,142 +8,145 @@ import json
 from pathlib import Path
 import re
 import textwrap
+import xml.etree.ElementTree as ET
 
-ASSETS = Path(__file__).resolve().parent.parent / "assets"
-PAPER, INK, RED, MUTED = "#F0EDE6", "#0C1D26", "#C03714", "#59656A"
-KINDS = {"discovery": "Discoveries", "correction": "Corrections", "decision": "Decisions"}
-
-
-def field(value, label, maximum=300):
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        raise ValueError(f"{label} must be non-empty text of at most {maximum} characters.")
-    if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", value):
-        raise ValueError(f"{label} contains unsupported control characters.")
-    return value.strip()
+ASSETS = Path(__file__).resolve().parent.parent / 'assets'
+PAPER, INK, RED, MUTED = '#F0EDE6', '#0C1D26', '#C03714', '#59656A'
+GROUPS = {'used': ('Helped', 'this time'), 'missed': ('Could help', 'sooner'), 'new': ('Learned', 'this time')}
 
 
-def records(value, label):
-    if not isinstance(value, list) or any(not isinstance(v, dict) for v in value):
-        raise ValueError(f"{label} must be a list of objects.")
-    ids = [field(v.get("id"), f"{label}.id", 100) for v in value]
-    if len(ids) != len(set(ids)):
-        raise ValueError(f"Duplicate IDs in {label}; deduplicate before rendering.")
+def field(value, label, words, chars):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f'{label} must be non-empty text.')
+    value = ' '.join(value.split())
+    if len(value) > chars or len(value.split()) > words:
+        raise ValueError(f'{label}: shorten to {words} words and {chars} characters or fewer.')
+    if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', value):
+        raise ValueError(f'{label} contains unsupported control characters.')
     return value
 
 
-def data_uri(path):
-    mime = "image/svg+xml" if path.suffix == ".svg" else "image/png"
-    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode()
+def checked(data):
+    if not isinstance(data, dict) or data.get('template_version') != 2:
+        raise ValueError('Use template_version 2; see references/report-data.md.')
+    allowed = {'template_version', 'agent', 'agent_logo', 'headline', 'description', 'findings', 'featured_ids'}
+    if set(data) - allowed:
+        raise ValueError('Unexpected input fields. Layout, colors, labels and computed counts are fixed.')
+    d = dict(data)
+    for key, words, chars in [('agent', 3, 18), ('headline', 9, 66), ('description', 18, 115)]:
+        d[key] = field(data.get(key), key, words, chars)
+    logo = data.get('agent_logo', '')
+    if not isinstance(logo, str) or logo not in {'', 'codex', 'claude'}:
+        raise ValueError('agent_logo must be codex, claude or empty.')
+    d['agent_logo'] = logo
+    findings = data.get('findings')
+    if not isinstance(findings, list) or len(findings) > 999:
+        raise ValueError('findings must be a list with at most 999 entries.')
+    ids, supported = set(), {}
+    for f in findings:
+        if not isinstance(f, dict):
+            raise ValueError('Each finding must be an object.')
+        fid = field(f.get('id'), 'finding.id', 1, 80)
+        if fid in ids:
+            raise ValueError('Duplicate finding ID; deduplicate before rendering.')
+        ids.add(fid)
+        if not isinstance(f.get('status'), str) or not isinstance(f.get('support'), str) or f['status'] not in {*GROUPS, 'unclear'} or f['support'] not in {'direct', 'summary_only', 'unverified'}:
+            raise ValueError('Invalid finding status or support.')
+        if f['support'] == 'direct':
+            evidence = f.get('evidence')
+            if not isinstance(evidence, list) or not evidence or any(not isinstance(e, dict) for e in evidence):
+                raise ValueError('Direct findings need evidence objects with source and quote.')
+            for e in evidence:
+                field(e.get('source'), 'evidence.source', 150, 1200)
+                field(e.get('quote'), 'evidence.quote', 1000, 6000)
+            if f['status'] != 'unclear':
+                supported[fid] = f
+    selected = data.get('featured_ids')
+    if not isinstance(selected, list) or any(not isinstance(x, str) for x in selected):
+        raise ValueError('featured_ids must be a list of IDs.')
+    if len(selected) > 2 or len(set(selected)) != len(selected) or any(x not in supported for x in selected):
+        raise ValueError('Select up to two distinct supported findings.')
+    featured = []
+    for fid in selected:
+        f = supported[fid]
+        featured.append({key: field(f.get(key), key, words, chars) for key, words, chars in [
+            ('title', 6, 48), ('happened', 12, 72), ('next_time', 12, 72)]})
+    return d, Counter(f['status'] for f in supported.values()), featured
 
 
 def render(data):
-    if not isinstance(data, dict) or not isinstance(data.get("card"), dict):
-        raise ValueError("Provide an object with card, findings and issues; see report-data.md.")
-    card = data["card"]
-    agent = field(data.get("agent"), "agent", 35)
-    scope = field(card.get("scope"), "card.scope", 85)
-    note = field(card.get("starting_note"), "card.starting_note", 155)
-    coverage = field(card.get("coverage_note"), "card.coverage_note", 105)
-    findings = records(data.get("findings"), "findings")
-    issues = records(data.get("issues"), "issues")
-    supported = []
-    for f in findings:
-        if f.get("kind") not in KINDS or f.get("support") not in {"direct", "summary_only", "unverified"}:
-            raise ValueError("Every finding needs a valid kind and support classification.")
-        if f["support"] == "direct":
-            evidence = f.get("established_evidence")
-            if not isinstance(evidence, list) or not evidence or not isinstance(evidence[0], dict):
-                raise ValueError("Direct findings require established_evidence with a quote and source.")
-            field(evidence[0].get("quote"), "evidence.quote", 10000)
-            field(evidence[0].get("source"), "evidence.source", 1000)
-            supported.append(f)
-    counts = Counter(f["kind"] for f in supported)
-    by_id = {f["id"]: f for f in supported}
-    selected = card.get("featured_ids", list(by_id)[:3])
-    if not isinstance(selected, list) or any(not isinstance(v, str) for v in selected):
-        raise ValueError("featured_ids must be a list of finding IDs.")
-    if len(selected) > 3 or len(selected) != len(set(selected)) or any(v not in by_id for v in selected):
-        raise ValueError("Feature up to three distinct, directly supported findings.")
-    if len(supported) > 9999 or len(issues) > 9999:
-        raise ValueError("This card is for one or two conversations, not a bulk dataset.")
+    d, counts, featured = checked(data)
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v2"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
+    copy = []
 
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title desc"><title id="title">Firmament conversation report</title><desc id="desc">{escape(scope)}. {len(supported)} supported lessons, {len(issues)} issues, {counts["correction"]} corrections. {escape(coverage)}</desc><rect width="840" height="1188" fill="{PAPER}"/>']
+    def text(x, y, value, size=22, color=INK, serif=False, anchor='start', brand=False):
+        family = 'Hoefler Text, Georgia, serif' if serif else 'Arial, Helvetica, sans-serif'
+        svg.append(f'<text x="{x}" y="{y}" fill="{color}" font-family="{family}" font-size="{size}" text-anchor="{anchor}">{escape(str(value))}</text>')
+        if not brand:
+            copy.append(str(value))
 
-    def text(x, y, value, size=17, color=INK, family="Arial, Helvetica, sans-serif", weight="400", extra=""):
-        svg.append(f'<text x="{x}" y="{y}" fill="{color}" font-family="{family}" font-size="{size}" font-weight="{weight}" {extra}>{escape(str(value))}</text>')
+    def para(x, y, value, width, lines, size=22, color=INK, serif=False):
+        wrapped = textwrap.wrap(value, width=width, break_long_words=False, break_on_hyphens=False)
+        if len(wrapped) > lines or any(len(line) > width for line in wrapped):
+            raise ValueError('Copy does not fit its fixed slot. Shorten the wording; do not change the layout.')
+        for i, row in enumerate(wrapped):
+            text(x, y+i*(size+7), row, size, color, serif)
 
-    def para(x, y, value, width, lines, size=17, color=INK, family="Arial, Helvetica, sans-serif", extra=""):
-        # Conservative wrapping keeps template text legible; fail rather than crop a finding.
-        wrapped = textwrap.wrap(value, width=width, break_long_words=True, break_on_hyphens=False)
-        if len(wrapped) > lines:
-            raise ValueError(f"Text exceeds the card's {lines}-line space; shorten the card wording: {value[:45]}")
-        for index, line in enumerate(wrapped):
-            text(x, y + index * (size + 6), line, size, color, family, extra=extra)
+    def rect(x, y, w, h, fill, rx=0, extra=''):
+        svg.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" fill="{fill}" {extra}/>')
 
-    def line(y):
-        svg.append(f'<path d="M48 {y}H792" stroke="#CCD0CB" stroke-width="1"/>')
+    def picture(name, x, y, w, h):
+        path = ASSETS / name
+        mime = 'image/svg+xml' if path.suffix == '.svg' else 'image/png'
+        uri = f'data:{mime};base64,' + base64.b64encode(path.read_bytes()).decode()
+        svg.append(f'<image x="{x}" y="{y}" width="{w}" height="{h}" href="{uri}" xlink:href="{uri}"/>')
 
-    def picture(path, x, y, width, height):
-        uri = data_uri(path)
-        svg.append(f'<image x="{x}" y="{y}" width="{width}" height="{height}" href="{uri}" xlink:href="{uri}"/>')
+    picture('firmament.png', 48, 39, 37, 46)
+    text(98, 72, 'Firmament', 30, serif=True, brand=True)
+    if d['agent_logo']:
+        picture('agents/'+d['agent_logo']+'.svg', 757-len(d['agent'])*10, 49, 25, 25)
+    text(792, 70, d['agent'], 18, anchor='end', brand=True)
+    svg.append('<path d="M48 110H792" stroke="#CED1CA"/>')
+    para(48, 177, d['headline'], 33, 2, 45, serif=True)
+    para(48, 277, d['description'], 58, 2, 22, MUTED)
 
-    picture(ASSETS / "firmament.png", 48, 38, 37, 46)
-    text(98, 71, "Firmament", 30, family="Hoefler Text, Georgia, serif")
-    text(792, 65, "CONVERSATION REPORT", 12, MUTED, extra='text-anchor="end" letter-spacing="1"')
-    line(106)
-    text(48, 170, "Your next agent", 48, family="Hoefler Text, Georgia, serif")
-    text(48, 220, "should know this.", 48, family="Hoefler Text, Georgia, serif")
-    para(48, 251, scope, 90, 1, 15, MUTED)
-    logo_name = data.get("agent_logo", "")
-    if logo_name and not re.fullmatch(r"[a-z0-9-]+", logo_name):
-        raise ValueError("agent_logo must be a bundled logo name.")
-    logo = ASSETS / "agents" / f"{logo_name}.svg"
-    if logo_name and logo.is_file():
-        picture(logo, 638, 218, 25, 25)
-        text(674, 238, agent, 16)
-    else:
-        text(792, 239, agent, 16, extra='text-anchor="end"')
-
-    for x, value, label in [(48, len(supported), "Lessons worth keeping"), (310, len(issues), "Issues surfaced"), (572, counts["correction"], "User corrections")]:
-        text(x, 328, value, 54)
-        text(x, 357, label, 16, MUTED)
-    line(382)
-    text(48, 416, "What you taught it", 18)
+    rect(48, 342, 744, 282, '#E6E5DD', 12)
     maximum = max(counts.values(), default=1) or 1
-    for i, (kind, label) in enumerate(KINDS.items()):
-        y = 439 + i * 27
-        text(48, y + 12, label, 14, MUTED)
-        svg.append(f'<rect x="154" y="{y}" width="155" height="14" rx="3" fill="#E1E2DB"/>')
-        if counts[kind]:
-            svg.append(f'<rect x="154" y="{y}" width="{155 * counts[kind] / maximum}" height="14" rx="3" fill="{RED if kind == "correction" else INK}"/>')
-        text(325, y + 12, counts[kind], 14)
-    text(400, 416, "A better starting point", 18)
-    para(400, 445, note, 44, 4, 17, MUTED)
+    for i, (key, label) in enumerate(GROUPS.items()):
+        x = 172 + i*248
+        text(x, 404, counts[key], 50, anchor='middle')
+        height = 130*counts[key]/maximum
+        rect(x-60, 426, 120, 130, '#D7DCD3', 4)
+        rect(x-60, 556-height, 120, height, RED if key == 'missed' else INK, 4, f'data-series="{key}"')
+        text(x, 586, label[0], 21, anchor='middle')
+        text(x, 612, label[1], 21, anchor='middle')
 
-    for index, finding_id in enumerate(selected):
-        f = by_id[finding_id]
-        y = 550 + index * 174
-        line(y - 18)
-        title = field(f.get("title"), "finding.title", 52)
-        summary = field(f.get("card_summary"), "finding.card_summary", 220)
-        quote = field(f["established_evidence"][0]["quote"], "featured evidence.quote", 105)
-        para(48, y + 15, title, 53, 1, 25, family="Hoefler Text, Georgia, serif")
-        para(48, y + 46, summary, 83, 3, 17)
-        para(60, y + 123, "“" + quote + "”", 82, 2, 16, MUTED, extra='font-style="italic"')
-        svg.append(f'<path d="M48 {y+108}v35" stroke="{RED}" stroke-width="2"/>')
+    for i in range(2):
+        y = 654+i*232
+        rect(48, y, 744, 210, INK if i == 0 else '#E6E5DD', 12)
+        color = PAPER if i == 0 else INK
+        muted = '#C3CCC8' if i == 0 else MUTED
+        if i < len(featured):
+            f = featured[i]
+            para(76, y+42, f['title'], 48, 1, 28, color, True)
+            text(76, y+78, 'What happened', 16, muted)
+            text(454, y+78, 'Next time', 16, muted)
+            para(76, y+109, f['happened'], 24, 3, 24, color)
+            para(454, y+109, f['next_time'], 24, 3, 24, color)
+            svg.append(f'<path d="M410 {y+130}h18m-7 -7l7 7-7 7" fill="none" stroke="{RED if i else "#ECA28B"}" stroke-width="2"/>')
+        else:
+            text(76, y+62, 'No example selected', 28, color, True)
+            text(76, y+105, 'See the full notes for detail.', 22, muted)
+    svg.append('</svg>')
+    if len(' '.join(copy).split()) > 120:
+        raise ValueError('Poster exceeds 120 words. Shorten the input copy.')
+    return '\n'.join(svg)
 
-    if not selected:
-        text(48, 590, "No supported lessons to feature yet.", 25, family="Hoefler Text, Georgia, serif")
-        para(48, 626, "This input did not establish a lesson with direct evidence. The detailed retrospective can still contain useful questions and unresolved issues.", 78, 3, 17, MUTED)
-    elif len(selected) < 3:
-        y = 560 + len(selected) * 174
-        para(48, y + 35, "The report features only what the available evidence supports.", 75, 2, 17, MUTED)
-    line(1102)
-    para(48, 1128, coverage, 115, 1, 12, MUTED)
-    text(48, 1155, "Counts describe these findings, not the agent's memory.", 12, MUTED)
-    text(792, 1155, "getfirmament.com", 12, MUTED, extra='text-anchor="end"')
-    svg.append("</svg>")
-    return "\n".join(svg)
+
+def poster_words(svg):
+    root = ET.fromstring(svg)
+    texts = [n.text or '' for n in root.findall('{http://www.w3.org/2000/svg}text')]
+    return sum(len(t.split()) for t in texts[2:])  # First two nodes are brand and agent.
 
 
 def html_document(svg):
@@ -183,7 +186,7 @@ def main():
         (args.out / "report.html").write_text(html_document(svg), encoding="utf-8")
     except (ValueError, OSError) as error:
         parser.exit(1, f"Cannot render report: {error}\n")
-    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg")}))
+    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 2, "word_count": poster_words(svg)}))
 
 
 if __name__ == "__main__":
