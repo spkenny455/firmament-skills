@@ -64,11 +64,11 @@ The headline is the finding, not “Learning audit” plus a subtitle. Examples 
 
 Write one short paragraph in your own voice. Say what you found and what a next agent might have to work out again. You may describe a concrete problem this knowledge could help avoid, linking it to an observed failure. A lesson discovered now could help next time; it could not have prevented its own discovery in this run. Hypothetical outcomes must use “could” or “may.” Do not estimate hours saved, invent probabilities, or require a benefit claim. If everything useful was preserved, say so plainly within the checked scope.
 
-Pick up to two concrete examples. Preserve the useful fact and its consequence: “Retries can charge twice” plus “The code retries payments, but the notes omit the key that makes retries safe.” Avoid task-only descriptions or empty advice like “Test an empty setup.” An all-saved report should show what was saved. A thin record should show uncertainty without padding.
+Pick up to two concrete examples. Lead with the consequence when supported: what could break, which rejected choice could return, or what costly investigation might repeat. Do not settle for “the notes are missing.” Preserve the useful fact and its consequence: “Retries can charge twice” plus “The code retries payments, but the notes omit the key that makes retries safe.” Avoid task-only descriptions or empty advice like “Test an empty setup.” An all-saved report should show what was saved. A thin record should show uncertainty without padding. Each example needs a short `impact` line and a supporting `impact_basis`: connect the knowledge gap to the specific action and consequence. For saved knowledge, describe the benefit of having it; for unknown storage, keep the consequence conditional. Never extrapolate this conversation into invented monthly losses or claim all future conversations behave the same way.
 
 ## 4. Fill and render the same template
 
-Read `references/report-data.md`. Write `report-data.json` using version 4. It contains the full evidence ledger plus short display fields. Counts are derived from distinct directly supported items: things learned, fully saved, chat only, and the four storage states. Summary-only candidates stay in the supporting record, outside these counts. No agent-authored scores, event totals, task graphs or savings metrics.
+Read `references/report-data.md`. Write `report-data.json` using version 5. It contains the full evidence ledger plus short display fields. Counts are derived from distinct directly supported items: things learned, fully saved, chat only, and the four storage states. Summary-only candidates stay in the supporting record, outside these counts. No agent-authored scores, event totals, task graphs or savings metrics.
 
 **Use the bundled renderer unchanged.** Do not create custom HTML, CSS, SVG, charts or logos. Do not imitate an earlier report from this chat. Resolve paths from this skill's installed directory:
 
@@ -76,7 +76,7 @@ Read `references/report-data.md`. Write `report-data.json` using version 4. It c
 python3 scripts/render_report.py /path/to/report-data.json --out /path/to/new/report-directory
 ```
 
-The fixed A4 poster has a compact brand/agent row, one finding as the title, three large counts, one storage chart, your short insight paragraph, and two example slots. Logos are bundled; use the name fallback for an unsupported agent. The real installation address is printed on the image. No decorative task timeline, generic subtitle, method footnote, or fake button goes on the card. Full details stay in `retrospective.md` and the JSON.
+The fixed A4 poster has a compact brand/agent row, one finding as the title, three large counts, one storage chart, your short insight paragraph, and two example slots with a separate consequence line. Logos are bundled; use the name fallback for an unsupported agent. The real installation address is printed on the image. No decorative task timeline, generic subtitle, method footnote, or fake button goes on the card. Full details stay in `retrospective.md` and the JSON.
 
 Shorten rejected display copy without weakening its meaning. Never edit the renderer or shrink fonts during an audit. If Python or execution is unavailable, return the completed retrospective and JSON and explain that the card could not be rendered. Do not improvise another design.
 

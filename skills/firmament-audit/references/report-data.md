@@ -1,4 +1,4 @@
-# Fixed report data — version 4
+# Fixed report data — version 5
 
 The agent writes the analysis and data; the bundled script owns the design. Use this exact root schema. No extra metrics or layout fields. `retrospective.md` holds the full account, including superseded choices, issues, baseline knowledge and uncertainty. JSON is the traceable ledger behind the card.
 
@@ -19,10 +19,10 @@ These are counts within the reviewed evidence, not a whole-account score. Summar
 
 | Field | Contract |
 | --- | --- |
-| `template_version` | `4` |
+| `template_version` | `5` |
 | `agent` | Display name, up to 3 words / 18 characters. Do not guess a model name. |
 | `agent_logo` | `codex`, `claude`, or empty string for text fallback. Bundled and embedded by the script. |
-| `headline` | One specific finding, up to 12 words / 76 characters; must fit three fixed lines. No generic report title or subtitle. |
+| `headline` | One specific finding, up to 12 words / 68 characters; must fit two fixed lines. No generic report title or subtitle. |
 | `insight` | Agent's own paragraph, up to 45 words / 280 characters, five lines. State the useful knowledge and its consequence, or an honest lack of evidence/gap. |
 | `insight_ids` | IDs of direct findings grounding that paragraph. Required when any direct findings exist. Empty for an evidence-limited or empty audit. |
 | `coverage` | Object with nonempty `conversation`, `artifacts`, `limits`. Say what was inspected and what could not be checked. Use “No additional limits identified” only if justified. Supporting data, not poster copy. |
@@ -45,7 +45,7 @@ Every finding has:
 - `support`: `direct`, `summary_only`, or `unverified`.
 - `evidence`: direct findings require a nonempty list of `{ "source": "message/turn/tool reference", "quote": "exact excerpt" }`. Quote only material you can see.
 - `retention`: storage state with the fields below.
-- For featured findings only, `title` (up to 7 words / 43 characters) and `detail` (up to 23 words / 135 characters). Slots also have line limits. Say the concrete lesson and what survived or is missing. Do not merely repeat the status or write generic instructions. Public-facing excerpts should omit secrets and unnecessary identifying details; exact private evidence remains local.
+- For featured findings only, `title` (up to 7 words / 43 characters) and `detail` (up to 23 words / 135 characters). Also supply `impact` (up to 15 words / 95 characters): the specific practical consequence, and `impact_basis`: the evidence and causal reasoning that support it. For missing knowledge, explain the action a next agent could get wrong and its consequence. For saved knowledge, explain the benefit; unknown storage must not be treated as confirmed loss. Do not restate the status, invent savings, or claim a repeat failure is certain. Slots also have line limits. Say the concrete lesson and what survived or is missing. Do not merely repeat the status or write generic instructions. Public-facing excerpts should omit secrets and unnecessary identifying details; exact private evidence remains local.
 
 Every `retention` has `status`, `reason` (why this status is justified) and `artifact_ids` (inspected artifact IDs). All states except `unknown` require at least one checked artifact. For `chat_only`, those checks must cover the relevant expected storage places, not an arbitrary unrelated file. If no relevant artifact can be checked, or key storage is inaccessible, use `unknown`.
 
@@ -59,7 +59,7 @@ This fixture illustrates a partial decision, not a required story or a claim abo
 
 ```json
 {
-  "template_version": 4,
+  "template_version": 5,
   "agent": "Agent",
   "agent_logo": "",
   "headline": "Your fix was saved. The reason was not.",
@@ -89,7 +89,9 @@ This fixture illustrates a partial decision, not a required story or a claim abo
       "missing": "Why the limit prevents duplicate charges and when it can safely change."
     },
     "title": "Why retries stop at one",
-    "detail": "The limit is in the code. The risk of charging twice is only in the chat."
+    "detail": "The retry limit is in the code, but its reason is only in the chat.",
+    "impact": "Raising the limit could charge a customer twice.",
+    "impact_basis": "The user explained that timeouts can happen after acceptance. Without this reason, a later agent might raise the limit before adding stable keys. This is a plausible risk, not an observed repeat failure."
   }],
   "featured_ids": ["K1"]
 }
@@ -107,3 +109,5 @@ This fixture illustrates a partial decision, not a required story or a claim abo
 Run the bundled `scripts/render_report.py` with the JSON path and a **new** `--out` directory. It rejects old versions and invalid evidence structure. It cannot judge whether a quote is true or whether an artifact search was sufficient; that remains the auditing agent's responsibility.
 
 The A4 layout, embedded logos, palette, labels, storage chart and export controls are fixed. Copy has a 165-word total ceiling plus individual slot limits; the ceiling is not a target. The title, insight and two examples should do the work. No footnote block is printed. Coverage and full evidence stay available in the supporting files. If copy does not fit, edit the JSON and rerun; never alter the renderer during an audit.
+
+The HTML measures actual rendered text bounds after fonts load. Export buttons are disabled if copy exceeds its slot. Shorten the affected text and rerun; do not hide clipping or squeeze fonts to fit.

@@ -40,11 +40,11 @@ def evidence(value, label):
 def checked(data):
     allowed = {'template_version', 'agent', 'agent_logo', 'headline', 'insight',
                'insight_ids', 'coverage', 'artifacts', 'findings', 'featured_ids'}
-    if not isinstance(data, dict) or data.get('template_version') != 4:
-        raise ValueError('Use template_version 4; see references/report-data.md.')
+    if not isinstance(data, dict) or data.get('template_version') != 5:
+        raise ValueError('Use template_version 5; see references/report-data.md.')
     if set(data) - allowed: raise ValueError('Unexpected fields; the layout and metrics are fixed.')
     d = dict(data)
-    for key, words, chars in [('agent', 3, 18), ('headline', 12, 76), ('insight', 45, 280)]:
+    for key, words, chars in [('agent', 3, 18), ('headline', 12, 68), ('insight', 45, 280)]:
         d[key] = field(d.get(key), key, words, chars)
     if d.get('agent_logo', '') not in ('', 'codex', 'claude'):
         raise ValueError('agent_logo must be codex, claude or empty.')
@@ -115,14 +115,16 @@ def checked(data):
         f = supported[fid]
         featured.append({'status': f['retention']['status'],
                          'title': field(f.get('title'), 'title', 7, 43),
-                         'detail': field(f.get('detail'), 'detail', 23, 135)})
+                         'detail': field(f.get('detail'), 'detail', 23, 135),
+                         'impact': field(f.get('impact'), 'impact', 15, 95)})
+        field(f.get('impact_basis'), 'impact_basis')
     return d, Counter(f['retention']['status'] for f in supported.values()), featured
 
 
 def render(data):
     d, counts, featured = checked(data)
     total = sum(counts.values())
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v4"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v5"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
     copy = []
 
     def text(x, y, value, size=22, color=INK, serif=False, anchor='start', brand=False):
@@ -130,11 +132,15 @@ def render(data):
         svg.append(f'<text x="{x}" y="{y}" fill="{color}" font-family="{family}" font-size="{size}" text-anchor="{anchor}">{escape(str(value))}</text>')
         if not brand: copy.append(str(value))
 
-    def para(x, y, value, width, lines, size=22, color=INK, serif=False):
+    def para(x, y, value, width, lines, size=22, color=INK, serif=False, box_width=None, bottom=None):
         wrapped = textwrap.wrap(value, width=width, break_long_words=False, break_on_hyphens=False)
-        if len(wrapped) > lines or any(len(line) > width for line in wrapped):
-            raise ValueError('Copy does not fit its fixed slot. Shorten the wording; do not change the layout.')
+        bottom = bottom if bottom is not None else y+(lines-1)*(size+7)+size*.3
+        if (len(wrapped) > lines or any(len(line) > width for line in wrapped)
+                or y+(len(wrapped)-1)*(size+7)+size*.3 > bottom):
+            raise ValueError(f'Copy does not fit its fixed slot ({lines} lines): {value!r}. Shorten the wording; do not change the layout.')
+        svg.append(f'<g data-slot="text" data-x="{x}" data-top="{y-size*1.15}" data-width="{box_width or width*size*.6}" data-bottom="{bottom}">')
         for i, row in enumerate(wrapped): text(x, y+i*(size+7), row, size, color, serif)
+        svg.append('</g>')
 
     def rect(x, y, w, h, fill, rx=0, extra=''):
         svg.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" fill="{fill}" {extra}/>')
@@ -149,48 +155,50 @@ def render(data):
     text(87, 61, 'Firmament', 26, serif=True, brand=True)
     if d['agent_logo']: picture('agents/'+d['agent_logo']+'.svg', 760-len(d['agent'])*10, 41, 22, 22)
     text(792, 60, d['agent'], 17, anchor='end', brand=True)
-    para(48, 145, d['headline'], 30, 3, 48, serif=True)
+    para(48, 137, d['headline'], 33, 2, 46, serif=True, box_width=744, bottom=209)
 
     for i, (number, label, color) in enumerate([
         (total, 'Things learned', INK), (counts['saved'], 'Fully saved', INK),
         (counts['chat_only'], 'Chat only', RED)]):
         x = 48+i*252
-        rect(x, 301, 240, 173, '#FAF8F3', 12, 'data-panel="metric"')
-        text(x+22, 404, number, 86, color)
-        text(x+22, 444, label, 22, MUTED)
+        rect(x, 232, 240, 143, '#FAF8F3', 12, 'data-panel="metric"')
+        text(x+22, 325, number, 78, color)
+        text(x+22, 353, label, 21, MUTED)
 
-    rect(48, 494, 744, 215, '#E6E4DC', 12, 'data-panel="retention"')
-    text(72, 534, 'What was kept?', 26, serif=True)
-    text(768, 534, 'In the places checked', 16, MUTED, anchor='end')
-    rect(72, 559, 696, 42, '#D5D5CD', 4)
+    rect(48, 395, 744, 165, '#E6E4DC', 12, 'data-panel="retention"')
+    text(72, 429, 'What was kept?', 25, serif=True)
+    text(768, 429, 'In the places checked', 15, MUTED, anchor='end')
+    rect(72, 450, 696, 31, '#D5D5CD', 4)
     start = 72
     for state, (label, color) in STATES.items():
         width = 696*counts[state]/total if total else 0
         if width:
-            rect(start, 559, width, 42, color, extra=f'data-state="{state}" data-count="{counts[state]}"')
+            rect(start, 450, width, 31, color, extra=f'data-state="{state}" data-count="{counts[state]}"')
             start += width
     for i, (state, (label, color)) in enumerate(STATES.items()):
         x = 72+i*176
-        rect(x, 630, 10, 10, color, 2)
-        text(x+18, 644, counts[state], 30)
-        text(x, 678, label, 19, MUTED)
-    if not total: text(420, 586, 'Not enough evidence to count', 20, MUTED, anchor='middle')
+        rect(x, 502, 9, 9, color, 2)
+        text(x+17, 516, counts[state], 27)
+        text(x, 542, label, 18, MUTED)
+    if not total: text(420, 472, 'Not enough evidence to count', 19, MUTED, anchor='middle')
 
-    para(48, 761, d['insight'], 62, 5, 23)
+    para(48, 604, d['insight'], 62, 5, 23, box_width=744, bottom=738)
     for i in range(2):
         x = 48+i*378
-        rect(x, 934, 366, 178, '#FAF8F3', 12, 'data-panel="example"')
+        rect(x, 760, 366, 334, '#FAF8F3', 12, 'data-panel="example"')
         if i < len(featured):
             f = featured[i]
             label, color = STATES[f['status']]
-            text(x+22, 966, label, 15, color)
-            para(x+22, 1000, f['title'], 27, 2, 23, serif=True)
-            para(x+22, 1060, f['detail'], 37, 3, 17)
+            text(x+24, 793, label, 15, color)
+            para(x+24, 830, f['title'], 27, 2, 24, serif=True, box_width=318, bottom=871)
+            para(x+24, 903, f['detail'], 34, 3, 19, box_width=318, bottom=965)
+            rect(x+24, 980, 318, 1, '#D8D5CC')
+            para(x+24, 1007, f['impact'], 31, 3, 21, color=color, box_width=318, bottom=1070)
         else:
-            text(x+22, 983, 'No further finding', 23, MUTED, True)
-            para(x+22, 1031, 'This audit found no other clear example to show.', 33, 3, 18, MUTED)
-    text(48, 1157, 'What will your next agent know?', 21, serif=True)
-    text(792, 1157, 'github.com/spkenny455/firmament-skills', 13, MUTED, anchor='end')
+            text(x+24, 830, 'No further finding', 23, MUTED, True)
+            para(x+24, 880, 'This audit found no other clear example to show.', 33, 3, 19, MUTED, box_width=318, bottom=965)
+    text(48, 1128, 'What is each conversation leaving behind?', 24, serif=True)
+    text(48, 1160, 'github.com/spkenny455/firmament-skills', 15, MUTED)
     svg.append('</svg>')
     if len(' '.join(copy).split()) > 165: raise ValueError('Poster exceeds 165 words. Shorten the input copy.')
     return '\n'.join(svg)
@@ -206,11 +214,25 @@ def html_document(svg):
     return '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Firmament conversation report</title><style>
 *{box-sizing:border-box}body{margin:0;padding:24px;background:#dddeda;color:#0c1d26;font-family:Arial,Helvetica,sans-serif}.toolbar{max-width:840px;margin:0 auto 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}button{font:inherit;padding:10px 16px;border:1px solid #aab1ad;border-radius:6px;background:#f0ede6;cursor:pointer}button:first-child{background:#0c1d26;color:#f0ede6}#status{font-size:13px}main{max-width:840px;margin:auto;box-shadow:0 8px 30px #0001}main>svg{display:block;width:100%;height:auto}@page{size:A4 portrait;margin:0}@media print{body{padding:0;background:none}.toolbar{display:none}main{width:210mm;max-width:none;box-shadow:none}main>svg{width:210mm;height:297mm;display:block}}
 </style></head><body><div class="toolbar"><button id="png" type="button">Download PNG</button><button id="pdf" type="button">Print / Save PDF</button><span id="status" role="status">Private file. Nothing is uploaded.</span></div><main>''' + svg + '''</main><script>
-document.getElementById('pdf').addEventListener('click',()=>window.print());
+async function checkLayout(){
+ await document.fonts.ready;
+ const bad=[...document.querySelectorAll('[data-slot]')].filter(el=>{
+  const b=el.getBBox(), d=el.dataset;
+  return b.x < +d.x-1 || b.y < +d.top-1 || b.x+b.width > +d.x + +d.width+1 || b.y+b.height > +d.bottom+1;
+ });
+ if(bad.length)throw new Error('Text does not fit. Shorten the report data and render again.');
+}
+checkLayout().catch(error=>{
+ document.getElementById('status').textContent=error.message;
+ document.getElementById('png').disabled=true;document.getElementById('pdf').disabled=true;
+});
+document.getElementById('pdf').addEventListener('click',async()=>{
+ try{await checkLayout();window.print();}catch(error){document.getElementById('status').textContent=error.message;}
+});
 document.getElementById('png').addEventListener('click',async()=>{
  const status=document.getElementById('status');status.textContent='Preparing image…';
  try{
-  await document.fonts.ready;
+  await checkLayout();
   const source=new XMLSerializer().serializeToString(document.querySelector('main>svg'));
   const url=URL.createObjectURL(new Blob([source],{type:'image/svg+xml;charset=utf-8'}));
   const img=new Image();
@@ -239,7 +261,7 @@ def main():
         (args.out / "report.html").write_text(html_document(svg), encoding="utf-8")
     except (ValueError, OSError) as error:
         parser.exit(1, f"Cannot render report: {error}\n")
-    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 4, "word_count": poster_words(svg)}))
+    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 5, "word_count": poster_words(svg)}))
 
 
 if __name__ == "__main__":

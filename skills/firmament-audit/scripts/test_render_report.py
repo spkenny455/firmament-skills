@@ -85,7 +85,7 @@ class ReportTests(unittest.TestCase):
         cases = ['no-source', 'no-storage-quote', 'no-inspection', 'wrong-artifact',
                  'new-artifact', 'decision-without-why', 'duplicate', 'duplicate-knowledge',
                  'summary-storage', 'summary-feature', 'ungrounded-insight', 'old-schema',
-                 'layout', 'long-copy', 'unsupported-logo']
+                 'layout', 'long-copy', 'unsupported-logo', 'no-impact', 'no-impact-basis']
         for case in cases:
             with self.subTest(case=case):
                 d = sample(); f = d['findings'][0]; r = f['retention']
@@ -105,6 +105,8 @@ class ReportTests(unittest.TestCase):
                 if case == 'layout': d['layout'] = 'my-style'
                 if case == 'long-copy': d['headline'] = 'word '*20
                 if case == 'unsupported-logo': d['agent_logo'] = 'invented'
+                if case == 'no-impact': f.pop('impact')
+                if case == 'no-impact-basis': f.pop('impact_basis')
                 with self.assertRaises(ValueError): render(d)
 
     def test_escaping_and_embedded_assets(self):
@@ -118,6 +120,19 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(all(e.attrib['href'].startswith('data:image/') for e in images))
         self.assertNotIn('fetch(', html_document(svg))
         self.assertIn('canvas.width=2480;canvas.height=3508', html_document(svg))
+
+    def test_text_slots_keep_vertical_padding(self):
+        root = ET.fromstring(render(sample()))
+        ns = {'s': 'http://www.w3.org/2000/svg'}
+        for slot in root.findall('s:g', ns):
+            for row in slot.findall('s:text', ns):
+                # Reserve descent below the last baseline, not just line count.
+                self.assertLessEqual(float(row.attrib['y'])+float(row.attrib['font-size'])*.3,
+                                     float(slot.attrib['data-bottom']))
+        boxes = [e for e in root if e.attrib.get('data-panel') == 'example']
+        for box in boxes:
+            edge = float(box.attrib['y'])+float(box.attrib['height'])
+            self.assertGreaterEqual(edge-1070, 24)
 
     def test_unrelated_task_same_template(self):
         d = sample()
