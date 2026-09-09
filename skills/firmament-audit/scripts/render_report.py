@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fill the fixed Firmament A4 card from report-data.json. Python standard library only."""
+"""Render the fixed, local Firmament knowledge audit card. Python standard library only."""
 import argparse
 import base64
 from collections import Counter
@@ -12,93 +12,117 @@ import xml.etree.ElementTree as ET
 
 ASSETS = Path(__file__).resolve().parent.parent / 'assets'
 PAPER, INK, RED, MUTED = '#F0EDE6', '#0C1D26', '#C03714', '#59656A'
-GROUPS = {'used': ('Helped', 'this time'), 'missed': ('Could help', 'sooner'), 'new': ('Learned', 'this time')}
+STATES = {'saved': ('Saved', INK), 'partial': ('Part saved', '#AD8064'),
+          'chat_only': ('Chat only', RED), 'unknown': ('Not checked', '#BDBDB5')}
+KINDS = {'lesson', 'decision', 'fix'}
 
 
-def field(value, label, words, chars):
+def field(value, label, words=1000, chars=8000):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f'{label} must be non-empty text.')
+    if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', value):
+        raise ValueError(f'{label} contains unsupported control characters.')
     value = ' '.join(value.split())
     if len(value) > chars or len(value.split()) > words:
         raise ValueError(f'{label}: shorten to {words} words and {chars} characters or fewer.')
-    if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', value):
-        raise ValueError(f'{label} contains unsupported control characters.')
     return value
 
 
+def evidence(value, label):
+    if not isinstance(value, list) or not value:
+        raise ValueError(f'{label} needs source/quote evidence.')
+    for e in value:
+        if not isinstance(e, dict): raise ValueError(f'{label}: expected evidence object.')
+        field(e.get('source'), label+'.source')
+        field(e.get('quote'), label+'.quote')
+
+
 def checked(data):
-    if not isinstance(data, dict) or data.get('template_version') != 3:
-        raise ValueError('Use template_version 3; see references/report-data.md.')
-    allowed = {'template_version', 'agent', 'agent_logo', 'headline', 'description', 'findings', 'featured_ids', 'events', 'spotlight_label'}
-    if set(data) - allowed:
-        raise ValueError('Unexpected input fields. Layout, colors, labels and computed counts are fixed.')
+    allowed = {'template_version', 'agent', 'agent_logo', 'headline', 'insight',
+               'insight_ids', 'coverage', 'artifacts', 'findings', 'featured_ids'}
+    if not isinstance(data, dict) or data.get('template_version') != 4:
+        raise ValueError('Use template_version 4; see references/report-data.md.')
+    if set(data) - allowed: raise ValueError('Unexpected fields; the layout and metrics are fixed.')
     d = dict(data)
-    for key, words, chars in [('agent', 3, 18), ('headline', 9, 66), ('description', 18, 59), ('spotlight_label', 4, 40)]:
-        d[key] = field(data.get(key), key, words, chars)
-    logo = data.get('agent_logo', '')
-    if not isinstance(logo, str) or logo not in {'', 'codex', 'claude'}:
+    for key, words, chars in [('agent', 3, 18), ('headline', 12, 76), ('insight', 45, 280)]:
+        d[key] = field(d.get(key), key, words, chars)
+    if d.get('agent_logo', '') not in ('', 'codex', 'claude'):
         raise ValueError('agent_logo must be codex, claude or empty.')
-    d['agent_logo'] = logo
-    findings = data.get('findings')
+    d.setdefault('agent_logo', '')
+    coverage = d.get('coverage')
+    if not isinstance(coverage, dict): raise ValueError('Describe the conversation and artifact coverage.')
+    for key in ('conversation', 'artifacts', 'limits'): field(coverage.get(key), 'coverage.'+key)
+    artifacts = d.get('artifacts')
+    if not isinstance(artifacts, list): raise ValueError('artifacts must be a list.')
+    artifact_ids = set()
+    for a in artifacts:
+        if not isinstance(a, dict): raise ValueError('Each artifact must be an object.')
+        aid = field(a.get('id'), 'artifact.id', 1, 80)
+        if aid in artifact_ids: raise ValueError('Duplicate artifact ID.')
+        artifact_ids.add(aid)
+        field(a.get('location'), 'artifact.location')
+        field(a.get('checked'), 'artifact.checked')
+        if a.get('existed_before_audit') is not True:
+            raise ValueError('Audit-created files cannot be counted as prior storage.')
+    findings = d.get('findings')
     if not isinstance(findings, list) or len(findings) > 999:
-        raise ValueError('findings must be a list with at most 999 entries.')
-    ids, supported = set(), {}
+        raise ValueError('findings must be a list of at most 999 distinct knowledge items.')
+    ids, supported, unique = set(), {}, set()
     for f in findings:
-        if not isinstance(f, dict):
-            raise ValueError('Each finding must be an object.')
+        if not isinstance(f, dict): raise ValueError('Each finding must be an object.')
         fid = field(f.get('id'), 'finding.id', 1, 80)
-        if fid in ids:
-            raise ValueError('Duplicate finding ID; deduplicate before rendering.')
-        ids.add(fid)
-        if not isinstance(f.get('status'), str) or not isinstance(f.get('support'), str) or f['status'] not in {*GROUPS, 'unclear'} or f['support'] not in {'direct', 'summary_only', 'unverified'}:
-            raise ValueError('Invalid finding status or support.')
-        if f['support'] == 'direct':
-            evidence = f.get('evidence')
-            if not isinstance(evidence, list) or not evidence or any(not isinstance(e, dict) for e in evidence):
-                raise ValueError('Direct findings need evidence objects with source and quote.')
-            for e in evidence:
-                field(e.get('source'), 'evidence.source', 150, 1200)
-                field(e.get('quote'), 'evidence.quote', 1000, 6000)
-            if f['status'] != 'unclear':
-                field(f.get('topic'), 'finding.topic', 2, 10)
-                supported[fid] = f
-    selected = data.get('featured_ids')
-    if not isinstance(selected, list) or any(not isinstance(x, str) for x in selected):
-        raise ValueError('featured_ids must be a list of IDs.')
-    if len(selected) > 2 or len(set(selected)) != len(selected) or any(x not in supported for x in selected):
-        raise ValueError('Select up to two distinct supported findings.')
+        knowledge = field(f.get('knowledge'), 'finding.knowledge')
+        key = knowledge.casefold()
+        if fid in ids or key in unique: raise ValueError('Duplicate finding; merge repeated statements of the same knowledge.')
+        ids.add(fid); unique.add(key)
+        if f.get('kind') not in KINDS: raise ValueError('kind must be lesson, decision or fix.')
+        field(f.get('why'), 'finding.why')
+        if f.get('support') not in ('direct', 'summary_only', 'unverified'):
+            raise ValueError('Invalid finding support.')
+        r = f.get('retention')
+        if not isinstance(r, dict) or r.get('status') not in STATES:
+            raise ValueError('Invalid retention status.')
+        field(r.get('reason'), 'retention.reason')
+        refs = r.get('artifact_ids')
+        if not isinstance(refs, list) or any(not isinstance(x, str) or x not in artifact_ids for x in refs):
+            raise ValueError('retention.artifact_ids must reference inspected artifacts.')
+        if len(refs) != len(set(refs)): raise ValueError('Duplicate artifact reference.')
+        status = r['status']
+        if f['support'] != 'direct':
+            if status != 'unknown': raise ValueError('Unverified or summary-only findings must stay unknown.')
+            continue
+        evidence(f.get('evidence'), 'finding.evidence')
+        if status != 'unknown' and not refs:
+            raise ValueError('A storage claim needs an inspected artifact; otherwise use unknown.')
+        if status in ('saved', 'partial'):
+            evidence(r.get('evidence'), 'retention.evidence')
+            if any(e['source'] not in refs for e in r['evidence']):
+                raise ValueError('Storage evidence must name a referenced artifact ID.')
+        if status in ('partial', 'chat_only'): field(r.get('missing'), 'retention.missing')
+        if f['kind'] == 'decision' and status == 'saved' and r.get('rationale_saved') is not True:
+            raise ValueError('A saved decision must preserve its reason, not just the resulting choice.')
+        supported[fid] = f
+    for key, maximum in [('featured_ids', 2), ('insight_ids', 999)]:
+        selected = d.get(key)
+        if not isinstance(selected, list) or any(not isinstance(x, str) for x in selected):
+            raise ValueError(f'{key} must be a list of finding IDs.')
+        if len(selected) > maximum or len(set(selected)) != len(selected) or any(x not in supported for x in selected):
+            raise ValueError(f'{key} must reference distinct directly supported findings.')
+    if supported and (not d['featured_ids'] or not d['insight_ids']):
+        raise ValueError('Show a real example and ground the insight in supported findings.')
     featured = []
-    for fid in selected:
+    for fid in d['featured_ids']:
         f = supported[fid]
-        featured.append({key: field(f.get(key), key, words, chars) for key, words, chars in [
-            ('title', 6, 42), ('next_time', 12, 72)]})
-    if len({f['topic'] for f in supported.values()}) > 3:
-        raise ValueError('Choose at most three plain topic labels for findings.')
-    events = data.get('events')
-    if not isinstance(events, list) or len(events) > 999:
-        raise ValueError('events must be a list with at most 999 observed events.')
-    event_ids = set()
-    for event in events:
-        if not isinstance(event, dict): raise ValueError('Each event must be an object.')
-        eid = field(event.get('id'), 'event.id', 1, 80)
-        if eid in event_ids: raise ValueError('Duplicate event ID.')
-        event_ids.add(eid)
-        field(event.get('label'), 'event.label', 4, 32)
-        evidence = event.get('evidence')
-        if not isinstance(evidence, list) or not evidence: raise ValueError('Each counted event requires evidence.')
-        for e in evidence:
-            if not isinstance(e, dict): raise ValueError('Evidence must be an object.')
-            field(e.get('source'), 'event source', 150, 1200)
-            field(e.get('quote'), 'event quote', 1000, 6000)
-    return d, Counter(f['status'] for f in supported.values()), featured
+        featured.append({'status': f['retention']['status'],
+                         'title': field(f.get('title'), 'title', 7, 43),
+                         'detail': field(f.get('detail'), 'detail', 23, 135)})
+    return d, Counter(f['retention']['status'] for f in supported.values()), featured
 
 
 def render(data):
     d, counts, featured = checked(data)
-    findings = [f for f in d['findings'] if f['support'] == 'direct' and f['status'] != 'unclear']
-    topics = Counter(f['topic'] for f in findings)
-    events = d['events']
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v3"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
+    total = sum(counts.values())
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v4"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
     copy = []
 
     def text(x, y, value, size=22, color=INK, serif=False, anchor='start', brand=False):
@@ -121,71 +145,54 @@ def render(data):
         uri = f'data:{mime};base64,' + base64.b64encode(p.read_bytes()).decode()
         svg.append(f'<image x="{x}" y="{y}" width="{w}" height="{h}" href="{uri}" xlink:href="{uri}"/>')
 
-    def circle(x, y, r, fill, stroke='none', width=1):
-        svg.append(f'<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{width}"/>')
+    picture('firmament.png', 48, 35, 28, 35)
+    text(87, 61, 'Firmament', 26, serif=True, brand=True)
+    if d['agent_logo']: picture('agents/'+d['agent_logo']+'.svg', 760-len(d['agent'])*10, 41, 22, 22)
+    text(792, 60, d['agent'], 17, anchor='end', brand=True)
+    para(48, 145, d['headline'], 30, 3, 48, serif=True)
 
-    picture('firmament.png', 48, 38, 37, 46)
-    text(98, 71, 'Firmament', 31, serif=True, brand=True)
-    if d['agent_logo']: picture('agents/'+d['agent_logo']+'.svg', 757-len(d['agent'])*10, 48, 25, 25)
-    text(792, 69, d['agent'], 18, anchor='end', brand=True)
-    para(48, 168, d['headline'], 31, 2, 49, serif=True)
-    para(48, 275, d['description'], 59, 1, 22, MUTED)
+    for i, (number, label, color) in enumerate([
+        (total, 'Things learned', INK), (counts['saved'], 'Fully saved', INK),
+        (counts['chat_only'], 'Chat only', RED)]):
+        x = 48+i*252
+        rect(x, 301, 240, 173, '#FAF8F3', 12, 'data-panel="metric"')
+        text(x+22, 404, number, 86, color)
+        text(x+22, 444, label, 22, MUTED)
 
-    # Same four-panel structure for every dataset; no agent-authored styling.
-    rect(48, 316, 358, 286, INK, 18)
-    text(78, 482, len(events), 148, PAPER)
-    # Repeated-event motif. Equal circles are ornamental, not an extra metric.
-    for x, y, r in [(331, 383, 34), (313, 415, 34), (331, 447, 34)]:
-        circle(x, y, r, 'none', '#516067', 2)
-    para(80, 531, d['spotlight_label'], 25, 2, 24, PAPER)
+    rect(48, 494, 744, 215, '#E6E4DC', 12, 'data-panel="retention"')
+    text(72, 534, 'What was kept?', 26, serif=True)
+    text(768, 534, 'In the places checked', 16, MUTED, anchor='end')
+    rect(72, 559, 696, 42, '#D5D5CD', 4)
+    start = 72
+    for state, (label, color) in STATES.items():
+        width = 696*counts[state]/total if total else 0
+        if width:
+            rect(start, 559, width, 42, color, extra=f'data-state="{state}" data-count="{counts[state]}"')
+            start += width
+    for i, (state, (label, color)) in enumerate(STATES.items()):
+        x = 72+i*176
+        rect(x, 630, 10, 10, color, 2)
+        text(x+18, 644, counts[state], 30)
+        text(x, 678, label, 19, MUTED)
+    if not total: text(420, 586, 'Not enough evidence to count', 20, MUTED, anchor='middle')
 
-    rect(426, 316, 366, 286, '#FAF8F3', 18)
-    text(454, 411, len(findings), 82)
-    text(454, 447, 'Lessons to keep', 23)
-    maximum = max(topics.values(), default=1) or 1
-    ordered = sorted(topics.items(), key=lambda item: (-item[1], item[0]))
-    for i in range(3):
-        y = 479+i*35
-        if i < len(ordered):
-            label, count = ordered[i]
-            text(454, y+16, label, 18, MUTED)
-            rect(562, y+2, 164, 16, '#E7E7DE', 5)
-            rect(562, y+2, 164*count/maximum, 16, RED if i == 0 else '#7B8D89', 5, f'data-topic="{escape(label)}"')
-            text(761, y+16, count, 18, anchor='end')
-    if not ordered: text(454, 502, 'No supported lessons yet.', 20, MUTED)
-
-    rect(48, 624, 744, 204, '#FAF8F3', 18)
-    text(78, 665, 'What happened', 24)
-    if events:
-        displayed = events if len(events) <= 3 else [events[0], events[len(events)//2], events[-1]]
-        # Each label is an actual observed event, never an invented better path.
-        xs = [172, 420, 668][:len(displayed)]
-        if len(displayed) == 1: xs = [420]
-        if len(displayed) == 2: xs = [220, 620]
-        if len(xs) > 1:
-            svg.append(f'<path d="M{xs[0]} 715H{xs[-1]}" stroke="#D7DDD5" stroke-width="4"/>')
-        for x, event in zip(xs, displayed):
-            circle(x, 715, 11, RED)
-            label = textwrap.wrap(event['label'], 18, break_long_words=False)
-            if len(label) > 2 or any(len(s) > 18 for s in label): raise ValueError('Shorten the event label.')
-            for i, row in enumerate(label): text(x, 758+i*27, row, 23, anchor='middle')
-    else: text(78, 722, 'No clear events to show.', 25, MUTED)
-
+    para(48, 761, d['insight'], 62, 5, 23)
     for i in range(2):
         x = 48+i*378
-        rect(x, 850, 366, 214, '#E7E7DF', 18)
+        rect(x, 934, 366, 178, '#FAF8F3', 12, 'data-panel="example"')
         if i < len(featured):
             f = featured[i]
-            para(x+28, 892, f['title'], 25, 2, 25, serif=True)
-            para(x+28, 966, f['next_time'], 26, 3, 22)
+            label, color = STATES[f['status']]
+            text(x+22, 966, label, 15, color)
+            para(x+22, 1000, f['title'], 27, 2, 23, serif=True)
+            para(x+22, 1060, f['detail'], 37, 3, 17)
         else:
-            text(x+28, 892, 'No further example', 24, MUTED, True)
-    # This is a call to action, not a methodology footer.
-    svg.append('<a href="https://github.com/spkenny455/firmament-skills" target="_blank">')
-    text(48, 1133, 'What would your agent learn?', 25, serif=True)
-    text(792, 1133, 'Run your audit ↗', 19, RED, anchor='end')
-    svg.append('</a></svg>')
-    if len(' '.join(copy).split()) > 120: raise ValueError('Poster exceeds 120 words. Shorten the input copy.')
+            text(x+22, 983, 'No further finding', 23, MUTED, True)
+            para(x+22, 1031, 'This audit found no other clear example to show.', 33, 3, 18, MUTED)
+    text(48, 1157, 'What will your next agent know?', 21, serif=True)
+    text(792, 1157, 'github.com/spkenny455/firmament-skills', 13, MUTED, anchor='end')
+    svg.append('</svg>')
+    if len(' '.join(copy).split()) > 165: raise ValueError('Poster exceeds 165 words. Shorten the input copy.')
     return '\n'.join(svg)
 
 
@@ -232,7 +239,7 @@ def main():
         (args.out / "report.html").write_text(html_document(svg), encoding="utf-8")
     except (ValueError, OSError) as error:
         parser.exit(1, f"Cannot render report: {error}\n")
-    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 3, "word_count": poster_words(svg)}))
+    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 4, "word_count": poster_words(svg)}))
 
 
 if __name__ == "__main__":
