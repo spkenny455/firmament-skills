@@ -68,7 +68,7 @@ Pick up to two concrete examples. Lead with the consequence when supported: what
 
 ## 4. Fill and render the same template
 
-Read `references/report-data.md`. Write `report-data.json` using version 5. It contains the full evidence ledger plus short display fields. Counts are derived from distinct directly supported items: things learned, fully saved, chat only, and the four storage states. Summary-only candidates stay in the supporting record, outside these counts. No agent-authored scores, event totals, task graphs or savings metrics.
+Read `references/report-data.md`. Write `report-data.json` using version 6. It contains the full evidence ledger plus short display fields. Keep the four storage states in the evidence ledger. The poster shows only Saved and Lost: saved items versus partial plus chat-only items. Lost means some useful knowledge was not preserved in the checked artifacts, not that the entire lesson vanished or actual forgetting was observed. The comparison includes only checked items; unknown storage stays outside its denominator. Summary-only candidates stay in the supporting record, outside these counts. No agent-authored scores, event totals, task graphs or savings metrics.
 
 **Use the bundled renderer unchanged.** Do not create custom HTML, CSS, SVG, charts or logos. Do not imitate an earlier report from this chat. Resolve paths from this skill's installed directory:
 
@@ -76,7 +76,7 @@ Read `references/report-data.md`. Write `report-data.json` using version 5. It c
 python3 scripts/render_report.py /path/to/report-data.json --out /path/to/new/report-directory
 ```
 
-The fixed A4 poster has a compact brand/agent row, one finding as the title, three large counts, one storage chart, your short insight paragraph, and two example slots with a separate consequence line. Logos are bundled; use the name fallback for an unsupported agent. The real installation address is printed on the image. No decorative task timeline, generic subtitle, method footnote, or fake button goes on the card. Full details stay in `retrospective.md` and the JSON.
+The fixed A4 poster has a compact brand/agent row, one finding as the title, one large Saved / Lost block, your short insight paragraph, and two example slots with a separate consequence line. Do not restore the three separate number boxes. The main count reads “X of Y checked lessons lost useful knowledge”; all-saved and uncheckable results use neutral or positive states in the same layout. Logos are bundled; use the name fallback for an unsupported agent. The real installation address is printed on the image. No decorative task timeline, generic subtitle, method footnote, or fake button goes on the card. Full details stay in `retrospective.md` and the JSON.
 
 Shorten rejected display copy without weakening its meaning. Never edit the renderer or shrink fonts during an audit. If Python or execution is unavailable, return the completed retrospective and JSON and explain that the card could not be rendered. Do not improvise another design.
 

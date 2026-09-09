@@ -40,8 +40,8 @@ def evidence(value, label):
 def checked(data):
     allowed = {'template_version', 'agent', 'agent_logo', 'headline', 'insight',
                'insight_ids', 'coverage', 'artifacts', 'findings', 'featured_ids'}
-    if not isinstance(data, dict) or data.get('template_version') != 5:
-        raise ValueError('Use template_version 5; see references/report-data.md.')
+    if not isinstance(data, dict) or data.get('template_version') != 6:
+        raise ValueError('Use template_version 6; see references/report-data.md.')
     if set(data) - allowed: raise ValueError('Unexpected fields; the layout and metrics are fixed.')
     d = dict(data)
     for key, words, chars in [('agent', 3, 18), ('headline', 12, 68), ('insight', 45, 280)]:
@@ -123,8 +123,7 @@ def checked(data):
 
 def render(data):
     d, counts, featured = checked(data)
-    total = sum(counts.values())
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v5"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="210mm" height="297mm" viewBox="0 0 840 1188" role="img" aria-labelledby="title" data-template="firmament-audit-v6"><title id="title">{escape(d["headline"])}</title><rect width="840" height="1188" fill="{PAPER}"/>']
     copy = []
 
     def text(x, y, value, size=22, color=INK, serif=False, anchor='start', brand=False):
@@ -157,46 +156,42 @@ def render(data):
     text(792, 60, d['agent'], 17, anchor='end', brand=True)
     para(48, 137, d['headline'], 33, 2, 46, serif=True, box_width=744, bottom=209)
 
-    for i, (number, label, color) in enumerate([
-        (total, 'Things learned', INK), (counts['saved'], 'Fully saved', INK),
-        (counts['chat_only'], 'Chat only', RED)]):
-        x = 48+i*252
-        rect(x, 232, 240, 143, '#FAF8F3', 12, 'data-panel="metric"')
-        text(x+22, 325, number, 78, color)
-        text(x+22, 353, label, 21, MUTED)
+    lost = counts['partial'] + counts['chat_only']
+    reviewed = counts['saved'] + lost
+    rect(48, 232, 744, 300, '#E6E4DC', 12, 'data-panel="retention"')
+    if not reviewed:
+        text(76, 342, 'Not checked', 68, MUTED, serif=True)
+        text(76, 385, 'Not enough evidence to count', 27)
+    elif not lost:
+        text(76, 342, f'All {reviewed}', 88, INK, serif=True)
+        text(76, 385, 'checked lesson was saved' if reviewed == 1 else 'checked lessons were saved', 27)
+    else:
+        text(76, 342, f'{lost} of {reviewed}', 88, RED, serif=True)
+        text(76, 385, 'checked lesson lost useful knowledge' if reviewed == 1 else 'checked lessons lost useful knowledge', 27)
+    rect(76, 418, 688, 42, '#D5D5CD', 4)
+    saved_width = 688*counts['saved']/reviewed if reviewed else 0
+    if saved_width: rect(76, 418, saved_width, 42, INK,
+                         extra=f'data-state="saved" data-count="{counts["saved"]}"')
+    if lost: rect(76+saved_width, 418, 688-saved_width, 42, RED,
+                  extra=f'data-state="lost" data-count="{lost}"')
+    text(76, 505, f"Saved {counts['saved']}", 26, INK)
+    text(764, 505, f'Lost {lost}', 26, RED, anchor='end')
 
-    rect(48, 395, 744, 165, '#E6E4DC', 12, 'data-panel="retention"')
-    text(72, 429, 'What was kept?', 25, serif=True)
-    text(768, 429, 'In the places checked', 15, MUTED, anchor='end')
-    rect(72, 450, 696, 31, '#D5D5CD', 4)
-    start = 72
-    for state, (label, color) in STATES.items():
-        width = 696*counts[state]/total if total else 0
-        if width:
-            rect(start, 450, width, 31, color, extra=f'data-state="{state}" data-count="{counts[state]}"')
-            start += width
-    for i, (state, (label, color)) in enumerate(STATES.items()):
-        x = 72+i*176
-        rect(x, 502, 9, 9, color, 2)
-        text(x+17, 516, counts[state], 27)
-        text(x, 542, label, 18, MUTED)
-    if not total: text(420, 472, 'Not enough evidence to count', 19, MUTED, anchor='middle')
-
-    para(48, 604, d['insight'], 62, 5, 23, box_width=744, bottom=738)
+    para(48, 574, d['insight'], 62, 5, 23, box_width=744, bottom=708)
     for i in range(2):
         x = 48+i*378
-        rect(x, 760, 366, 334, '#FAF8F3', 12, 'data-panel="example"')
+        rect(x, 730, 366, 334, '#FAF8F3', 12, 'data-panel="example"')
         if i < len(featured):
             f = featured[i]
-            label, color = STATES[f['status']]
-            text(x+24, 793, label, 15, color)
-            para(x+24, 830, f['title'], 27, 2, 24, serif=True, box_width=318, bottom=871)
-            para(x+24, 903, f['detail'], 34, 3, 19, box_width=318, bottom=965)
-            rect(x+24, 980, 318, 1, '#D8D5CC')
-            para(x+24, 1007, f['impact'], 31, 3, 21, color=color, box_width=318, bottom=1070)
+            label, color = ('Lost', RED) if f['status'] in ('partial', 'chat_only') else STATES[f['status']]
+            text(x+24, 763, label, 15, color)
+            para(x+24, 800, f['title'], 27, 2, 24, serif=True, box_width=318, bottom=841)
+            para(x+24, 873, f['detail'], 34, 3, 19, box_width=318, bottom=935)
+            rect(x+24, 950, 318, 1, '#D8D5CC')
+            para(x+24, 977, f['impact'], 31, 3, 21, color=color, box_width=318, bottom=1040)
         else:
-            text(x+24, 830, 'No further finding', 23, MUTED, True)
-            para(x+24, 880, 'This audit found no other clear example to show.', 33, 3, 19, MUTED, box_width=318, bottom=965)
+            text(x+24, 800, 'No further finding', 23, MUTED, True)
+            para(x+24, 850, 'This audit found no other clear example to show.', 33, 3, 19, MUTED, box_width=318, bottom=935)
     text(48, 1128, 'What is each conversation leaving behind?', 24, serif=True)
     text(48, 1160, 'github.com/spkenny455/firmament-skills', 15, MUTED)
     svg.append('</svg>')
@@ -261,7 +256,7 @@ def main():
         (args.out / "report.html").write_text(html_document(svg), encoding="utf-8")
     except (ValueError, OSError) as error:
         parser.exit(1, f"Cannot render report: {error}\n")
-    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 5, "word_count": poster_words(svg)}))
+    print(json.dumps({"html": str(args.out / "report.html"), "svg": str(args.out / "report.svg"), "template_version": 6, "word_count": poster_words(svg)}))
 
 
 if __name__ == "__main__":

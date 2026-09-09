@@ -1,4 +1,4 @@
-# Fixed report data — version 5
+# Fixed report data — version 6
 
 The agent writes the analysis and data; the bundled script owns the design. Use this exact root schema. No extra metrics or layout fields. `retrospective.md` holds the full account, including superseded choices, issues, baseline knowledge and uncertainty. JSON is the traceable ledger behind the card.
 
@@ -6,20 +6,22 @@ The agent writes the analysis and data; the bundled script owns the design. Use 
 
 One finding is one distinct reusable lesson, decision with its reason, or fix/correction. Count only `support: "direct"` items with original source evidence. Deduplicate by meaning, not only text. Do not count baseline instructions, task steps, repeated mentions, hypotheses, or every failed attempt as separate learnings.
 
-The renderer derives:
+The evidence ledger retains four states, while the poster shows **Saved / Lost** only:
 
-- **Things learned** = all directly supported findings, including those whose storage is unknown.
-- **Fully saved** = directly supported findings with `retention.status: "saved"`.
-- **Chat only** = directly supported findings with `retention.status: "chat_only"`.
-- **Storage chart** = `saved`, `partial`, `chat_only`, `unknown`, in that order, on the same denominator. These sum to things learned. Partial items are never counted as fully saved or entirely chat-only.
+- **Saved** = directly supported findings with `retention.status: "saved"`.
+- **Lost** = directly supported findings with `partial` or `chat_only` status. Count each once. This means some useful knowledge was not preserved in the checked artifacts, including a missing reason for a saved decision. It does not mean everything about the item vanished or that actual forgetting was observed.
+- **Checked** = Saved + Lost. The headline number and both bar segments use this denominator.
+- **Unknown** storage is excluded from both segments and the denominator. Preserve unknowns in the ledger and explain material coverage gaps in the response. Do not silently treat them as saved or lost.
 
-These are counts within the reviewed evidence, not a whole-account score. Summary-only and unverified candidates are recorded but excluded from all poster counts and examples. Their storage state must be `unknown`. Direct source evidence can coexist with unknown storage; do not discard such findings or call them lost.
+The fixed block reads “X of Y checked lessons lost useful knowledge,” followed by the Saved / Lost bar and two counts. It replaces the three separate number cards. If every checked item is saved, show “All Y” and “checked lessons were saved.” If no storage could be checked, show “Not checked” and “Not enough evidence to count”; do not show a loss percentage or suggest perfect retention.
+
+These are counts within the reviewed evidence, not a whole-account score. Summary-only and unverified candidates are recorded but excluded from all poster counts and examples. Their storage state must be `unknown`. Direct source evidence can coexist with unknown storage; such items may be featured as “Not checked” when useful, without a loss claim.
 
 ## Fields
 
 | Field | Contract |
 | --- | --- |
-| `template_version` | `5` |
+| `template_version` | `6` |
 | `agent` | Display name, up to 3 words / 18 characters. Do not guess a model name. |
 | `agent_logo` | `codex`, `claude`, or empty string for text fallback. Bundled and embedded by the script. |
 | `headline` | One specific finding, up to 12 words / 68 characters; must fit two fixed lines. No generic report title or subtitle. |
@@ -59,7 +61,7 @@ This fixture illustrates a partial decision, not a required story or a claim abo
 
 ```json
 {
-  "template_version": 5,
+  "template_version": 6,
   "agent": "Agent",
   "agent_logo": "",
   "headline": "Your fix was saved. The reason was not.",
@@ -100,7 +102,7 @@ This fixture illustrates a partial decision, not a required story or a claim abo
 ## Honest edge cases
 
 - All useful items saved: show those items, use an appropriately positive finding, and explain how the saved notes help. Do not invent a missed opportunity.
-- No access to task outputs: set direct findings to unknown, use no artifact references, and make that limitation clear in the title or insight. Zero confirmed chat-only items does not mean zero gaps.
+- No access to task outputs: set direct findings to unknown, use no artifact references, and make that limitation clear in the title or insight. No checked storage means no Saved / Lost comparison; it does not establish zero gaps.
 - No directly supported knowledge: empty featured/insight IDs; counts are zero, the chart says evidence is insufficient. Explain the reason instead of declaring perfect memory.
 - One strong example: supply one featured ID. The second slot uses the fixed neutral empty state. Never pad the ledger to fill the layout.
 

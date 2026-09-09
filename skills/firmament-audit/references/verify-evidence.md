@@ -18,4 +18,4 @@ For another host, use only a verified current-session mechanism or a user-select
 
 Recovered history may add lessons to the first account, but absence from that first account does not prove forgetting. To claim observed forgetting, establish a lesson, a later conflicting action, and evidence that the lesson still applied. Check whether requirements changed. Missing mentions or summary omissions do not establish a miss.
 
-Use the same finding IDs and version 5 ledger defined in `report-data.md`; do not create a separate scoring system. Verify storage separately in artifacts that existed before the audit. Finding a lesson in the original transcript proves its source, not that it was carried forward.
+Use the same finding IDs and version 6 ledger defined in `report-data.md`; do not create a separate scoring system. Verify storage separately in artifacts that existed before the audit. Finding a lesson in the original transcript proves its source, not that it was carried forward.

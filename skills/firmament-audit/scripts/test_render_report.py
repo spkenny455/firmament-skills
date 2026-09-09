@@ -53,9 +53,19 @@ class ReportTests(unittest.TestCase):
                 self.assertEqual(checked(d)[1], {state: 1})
                 self.assertEqual(panels(render(sample())), panels(render(d)))
 
-    def test_unknown_does_not_disappear(self):
+    def test_unknown_is_not_counted_as_saved_or_lost(self):
         d = sample(); set_state(d, 'unknown')
-        self.assertIn('data-state="unknown" data-count="1"', render(d))
+        self.assertIn('Not enough evidence to count', render(d))
+        self.assertNotIn('data-state=', render(d))
+        self.assertEqual(checked(d)[1], {'unknown': 1})
+
+    def test_all_saved_uses_positive_state(self):
+        d = sample(); set_state(d, 'saved')
+        svg = render(d)
+        self.assertIn('All 1', svg)
+        self.assertIn('checked lesson was saved', svg)
+        self.assertNotIn('lost useful knowledge', svg)
+        self.assertIn('data-state="saved" data-count="1"', svg)
 
     def test_empty_and_summary_only_do_not_claim_retention(self):
         d = sample(); d.update(findings=[], featured_ids=[], insight_ids=[])
@@ -78,7 +88,10 @@ class ReportTests(unittest.TestCase):
             d['findings'].append(f)
         root = ET.fromstring(render(d))
         bars = {e.attrib['data-state']: float(e.attrib['width']) for e in root if 'data-state' in e.attrib}
-        self.assertEqual(bars, dict.fromkeys(('saved', 'partial', 'chat_only', 'unknown'), 174))
+        self.assertEqual(set(bars), {'saved', 'lost'})
+        self.assertAlmostEqual(bars['saved'], 688/3)
+        self.assertAlmostEqual(bars['lost'], 688*2/3)
+        self.assertIn('2 of 3', render(d))
         self.assertEqual(sum(checked(d)[1].values()), 4)
 
     def test_reject_bad_data(self):
@@ -101,7 +114,7 @@ class ReportTests(unittest.TestCase):
                 if case == 'summary-storage': f['support'] = 'summary_only'
                 if case == 'summary-feature': set_state(d, 'unknown'); f['support'] = 'summary_only'
                 if case == 'ungrounded-insight': d['insight_ids'] = ['imaginary']
-                if case == 'old-schema': d['template_version'] = 3
+                if case == 'old-schema': d['template_version'] = 5
                 if case == 'layout': d['layout'] = 'my-style'
                 if case == 'long-copy': d['headline'] = 'word '*20
                 if case == 'unsupported-logo': d['agent_logo'] = 'invented'
@@ -132,7 +145,7 @@ class ReportTests(unittest.TestCase):
         boxes = [e for e in root if e.attrib.get('data-panel') == 'example']
         for box in boxes:
             edge = float(box.attrib['y'])+float(box.attrib['height'])
-            self.assertGreaterEqual(edge-1070, 24)
+            self.assertGreaterEqual(edge-1040, 24)
 
     def test_unrelated_task_same_template(self):
         d = sample()
